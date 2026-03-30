@@ -1,0 +1,26 @@
+# Local Terraform directories and cache
+.terraform/
+.terraform.*
+
+# Local state files (if generated accidentally)
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+
+# Variables files containing sensitive data
+*.tfvars
+.env
+
+# Lambda ZIP archives (auto-generated on apply)
+modules/lambda/app.zip
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
