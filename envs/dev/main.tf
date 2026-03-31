@@ -6,8 +6,8 @@ provider "aws" {
 }
 
 locals {
-  prefix      = "kyrychuk-vikoriia-07" 
-  db_password = "1122334455667788"     
+  prefix      = "kyrychuk-vikoriia-07"
+  db_password = "1122334455667788"
 }
 
 data "aws_vpc" "default" {

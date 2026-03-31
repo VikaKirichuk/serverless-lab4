@@ -29,7 +29,11 @@ resource "aws_apigatewayv2_route" "any_route" {
   route_key = "ANY /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
 }
-
+resource "aws_apigatewayv2_route" "student_translate_route" {
+  api_id    = aws_apigatewayv2_api.http_api.id
+  route_key = "GET /students/{id}"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+}
 
 resource "aws_lambda_permission" "api_gw" {
   statement_id  = "AllowExecutionFromAPIGateway"

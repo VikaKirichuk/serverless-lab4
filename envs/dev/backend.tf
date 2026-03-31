@@ -7,7 +7,7 @@ terraform {
     }
   }
   backend "s3" {
-    bucket       = "tf-state-lab4-kyrychuk-vikoriia-07" 
+    bucket       = "tf-state-lab4-kyrychuk-vikoriia-07"
     key          = "envs/dev/terraform.tfstate"
     region       = "eu-central-1"
     encrypt      = true

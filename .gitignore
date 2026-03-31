@@ -8,19 +8,22 @@
 
 # Crash logs
 crash.log
+crash.log.*       
 
 # Variables files containing sensitive data
 *.tfvars
+!*.tfvars.example  
 .env
 
-# Lambda ZIP archives (auto-generated on apply)
 modules/lambda/app.zip
 
 # Python cache
 __pycache__/
 *.py[cod]
+*.egg-info/        
 
 # IDE / OS
 .idea/
 .vscode/
 .DS_Store
+Thumbs.db         

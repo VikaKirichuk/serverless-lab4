@@ -13,7 +13,9 @@ DB_USER     = os.environ.get("DB_USER")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 LOG_BUCKET  = os.environ.get("LOG_BUCKET")
 
-s3 = boto3.client("s3")
+# Клієнти на рівні модуля — перевикористовуються при warm start
+s3        = boto3.client("s3")
+translate = boto3.client("translate", region_name="eu-central-1")
 
 
 def get_connection():
@@ -56,10 +58,48 @@ def write_log(action, details):
     )
 
 
+def translate_profile(student: dict, target_lang: str) -> dict:
+    """
+    Перекладає поля name і group_name через Amazon Translate.
+    SourceLanguageCode="auto" — мова визначається автоматично.
+    Graceful degradation: при помилці повертає оригінал + translate_error.
+    """
+    translated = dict(student)
+    translated["translated"] = False
+    translated["target_lang"] = target_lang
+    try:
+        name_result = translate.translate_text(
+            Text=student["name"],
+            SourceLanguageCode="auto",
+            TargetLanguageCode=target_lang
+        )
+        translated["name"] = name_result["TranslatedText"]
+        translated["source_lang_detected"] = name_result.get("SourceLanguageCode", "unknown")
+
+        group_result = translate.translate_text(
+            Text=student["group_name"],
+            SourceLanguageCode="auto",
+            TargetLanguageCode=target_lang
+        )
+        translated["group_name"] = group_result["TranslatedText"]
+        translated["translated"] = True
+    except Exception as e:
+        print(f"Translate error: {e}")
+        translated["translate_error"] = str(e)
+    return translated
+
+
 def handler(event, context):
     try:
         http_method = event["requestContext"]["http"]["method"]
         params      = event.get("queryStringParameters") or {}
+        raw_path    = event.get("rawPath", "")
+        path_parts  = raw_path.strip("/").split("/")
+        is_student_by_id = (
+            len(path_parts) == 2
+            and path_parts[0] == "students"
+            and bool(path_parts[1])
+        )
 
         conn = get_connection()
         conn.autocommit = False
@@ -68,7 +108,7 @@ def handler(event, context):
             with conn.cursor() as cur:
                 ensure_table(cur)
 
-                # POST /students
+                # ── POST /students ────────────────────────────────────────────
                 if http_method == "POST":
                     body  = json.loads(event.get("body") or "{}")
                     name  = body.get("name", "").strip()
@@ -89,8 +129,36 @@ def handler(event, context):
                     write_log("POST /students", {"id": student["id"], "name": name})
                     return _resp(201, student)
 
-                # GET /students?group=
-                elif http_method == "GET":
+                # ── GET /students/{id}?lang=  (Лаб. 5 — переклад профілю) ───
+                elif http_method == "GET" and is_student_by_id:
+                    sid       = path_parts[1]
+                    lang_code = params.get("lang")
+
+                    cur.execute(
+                        "SELECT * FROM students WHERE id = %s::uuid",
+                        (sid,)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        conn.rollback()
+                        return _resp(404, {"message": "Student not found"})
+
+                    student = dict(row)
+                    student["id"] = str(student["id"])
+                    conn.commit()
+
+                    if lang_code:
+                        result = translate_profile(student, lang_code)
+                        write_log("GET /students/{id}?lang=",
+                                  {"id": sid, "lang": lang_code,
+                                   "translated": result.get("translated")})
+                        return _resp(200, result)
+
+                    write_log("GET /students/{id}", {"id": sid})
+                    return _resp(200, student)
+
+                # ── GET /students?group=  (список, без змін) ─────────────────
+                elif http_method == "GET" and not is_student_by_id:
                     group_filter = params.get("group")
 
                     if group_filter:
@@ -109,10 +177,9 @@ def handler(event, context):
                     write_log("GET /students", {"group_filter": group_filter, "count": len(rows)})
                     return _resp(200, {"students": rows})
 
-                # DELETE /students/{id}
+                # ── DELETE /students/{id} ─────────────────────────────────────
                 elif http_method == "DELETE":
-                    path = event.get("rawPath", "")
-                    sid  = path.rstrip("/").split("/")[-1]
+                    sid = path_parts[1]
 
                     cur.execute(
                         "DELETE FROM students WHERE id = %s::uuid RETURNING id",
